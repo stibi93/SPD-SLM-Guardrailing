@@ -1,0 +1,10 @@
+data/raw/
+data/synthetic/
+data/processed/
+artifacts/
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+dist/
+.pytest_cache/

@@ -1,0 +1,13 @@
+version: 1
+defaults:
+  threshold: 0.5
+per_category:
+  ethnicity: 0.5
+  political_opinion: 0.5
+  religion_belief: 0.5
+  trade_union: 0.5
+  genetic: 0.5
+  biometric: 0.5
+  health: 0.5
+  sex_life_orientation: 0.5
+decision_logic: any_over_threshold

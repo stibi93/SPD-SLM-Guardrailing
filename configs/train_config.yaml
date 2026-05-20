@@ -1,0 +1,12 @@
+model_name_or_path: SZTAKI-HLT/hubert-base-cc
+train_data: data/processed/train.jsonl
+output_dir: artifacts/checkpoints
+seed: 42
+learning_rate: 2.0e-5
+weight_decay: 0.01
+dropout: 0.1
+num_epochs: 5
+batch_size: 8
+warmup_ratio: 0.1
+dev_split: 0.1
+early_stopping_patience: 1
