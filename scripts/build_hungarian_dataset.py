@@ -20,6 +20,12 @@ from long_form_examples import (  # noqa: E402
     MAX_TEXT_LENGTH,
     assert_max_length,
 )
+from banking_chat_scenarios import (  # noqa: E402
+    BANKING_MULTI_EXTRA,
+    BANKING_NEGATIVE_LONG,
+    BANKING_NEGATIVE_TEXTS,
+    BANKING_SPD_EXTRA,
+)
 
 from spd.categories import CATEGORIES
 
@@ -141,6 +147,28 @@ _NEGATIVE_TEXTS = [
     "A megtakarítási cél számlám nem frissül.",
     "Szeretnék tanácsot a befektetési alap választásához.",
 ]
+
+# Merged at build time with banking_chat_scenarios (see _all_negative_templates)
+_ALL_NEGATIVE_SOURCE = _NEGATIVE_TEXTS + BANKING_NEGATIVE_TEXTS
+_ALL_LONG_NEGATIVE_SOURCE = list(LONG_NEGATIVE) + list(BANKING_NEGATIVE_LONG)
+
+
+def _merged_category_texts() -> dict[str, list[str]]:
+    """Category templates + realistic banking-chat SPD examples, deduplicated."""
+    merged: dict[str, list[str]] = {}
+    for category in CATEGORIES:
+        extra = BANKING_SPD_EXTRA.get(category, [])
+        merged[category] = _unique_templates(_CATEGORY_TEXTS[category] + extra)
+    return merged
+
+
+def _all_negative_templates() -> list[str]:
+    return _unique_templates(_ALL_NEGATIVE_SOURCE)
+
+
+def _all_multi_templates() -> list[tuple[str, list[str]]]:
+    return _unique_multi(_MULTI_LABEL_EXAMPLES + BANKING_MULTI_EXTRA)
+
 
 _CATEGORY_TEXTS: dict[str, list[str]] = {
     "ethnicity": [
@@ -1282,33 +1310,41 @@ def _count_by_category(records: list[dict]) -> dict[str, int]:
 def build_datasets(
     train_per_category: int = 22,
     test_per_category: int = 12,
-    train_negatives: int = 40,
-    test_negatives: int = 22,
+    train_negatives: int = 85,
+    test_negatives: int = 45,
     train_multi_label: int = 65,
     test_multi_label: int = 30,
     train_long_single_per_category: int = 8,
     test_long_single_per_category: int = 4,
-    train_long_multi: int = 25,
-    test_long_multi: int = 12,
-    train_long_negative: int = 15,
-    test_long_negative: int = 8,
+    train_long_multi: int = 28,
+    test_long_multi: int = 14,
+    train_long_negative: int = 18,
+    test_long_negative: int = 10,
     output_dir: str = "data/processed",
 ) -> None:
-    assert set(_CATEGORY_TEXTS) == set(CATEGORIES), "_CATEGORY_TEXTS out of sync"
+    category_texts = _merged_category_texts()
+    assert set(category_texts) == set(CATEGORIES)
+    negative_pool = _all_negative_templates()
+    multi_pool_source = _all_multi_templates()
     assert_max_length()
 
     out = Path(output_dir)
     rng = random.Random(123)
 
-    train_cat: dict[str, list[str]] = {}
-    test_cat: dict[str, list[str]] = {}
-    category_texts = {c: _unique_templates(_CATEGORY_TEXTS[c]) for c in CATEGORIES}
     min_unique = min(len(category_texts[c]) for c in CATEGORIES)
     if train_per_category + test_per_category > min_unique:
         raise ValueError(
             f"Requested {train_per_category}+{test_per_category} templates per category "
             f"but smallest category pool has only {min_unique} unique templates"
         )
+    if train_negatives + test_negatives > len(negative_pool):
+        raise ValueError(
+            f"Need {train_negatives}+{test_negatives} negative templates, "
+            f"only {len(negative_pool)} unique available"
+        )
+
+    train_cat: dict[str, list[str]] = {}
+    test_cat: dict[str, list[str]] = {}
     for category in CATEGORIES:
         tr, te = _partition(
             category_texts[category], train_per_category, test_per_category, rng
@@ -1316,9 +1352,9 @@ def build_datasets(
         train_cat[category] = tr
         test_cat[category] = te
 
-    train_neg, test_neg = _partition(_NEGATIVE_TEXTS, train_negatives, test_negatives, rng)
+    train_neg, test_neg = _partition(negative_pool, train_negatives, test_negatives, rng)
     train_multi, test_multi = _partition(
-        _unique_multi(_MULTI_LABEL_EXAMPLES), train_multi_label, test_multi_label, rng
+        multi_pool_source, train_multi_label, test_multi_label, rng
     )
 
     train_long_single: dict[str, list[str]] = {}
@@ -1344,7 +1380,7 @@ def build_datasets(
     train_long_multi_list = long_multi_all[:train_long_multi]
     test_long_multi_list = long_multi_all[train_long_multi:long_multi_needed]
 
-    long_neg_all = LONG_NEGATIVE.copy()
+    long_neg_all = list(_ALL_LONG_NEGATIVE_SOURCE)
     rng.shuffle(long_neg_all)
     long_neg_needed = train_long_negative + test_long_negative
     while len(long_neg_all) < long_neg_needed:
@@ -1428,16 +1464,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Build Hungarian SPD datasets")
     parser.add_argument("--train-per-category", type=int, default=22)
     parser.add_argument("--test-per-category", type=int, default=12)
-    parser.add_argument("--train-negatives", type=int, default=40)
-    parser.add_argument("--test-negatives", type=int, default=22)
+    parser.add_argument("--train-negatives", type=int, default=85)
+    parser.add_argument("--test-negatives", type=int, default=45)
     parser.add_argument("--train-multi-label", type=int, default=65)
     parser.add_argument("--test-multi-label", type=int, default=30)
     parser.add_argument("--train-long-single-per-category", type=int, default=8)
     parser.add_argument("--test-long-single-per-category", type=int, default=4)
-    parser.add_argument("--train-long-multi", type=int, default=25)
-    parser.add_argument("--test-long-multi", type=int, default=12)
-    parser.add_argument("--train-long-negative", type=int, default=15)
-    parser.add_argument("--test-long-negative", type=int, default=8)
+    parser.add_argument("--train-long-multi", type=int, default=28)
+    parser.add_argument("--test-long-multi", type=int, default=14)
+    parser.add_argument("--train-long-negative", type=int, default=18)
+    parser.add_argument("--test-long-negative", type=int, default=10)
     parser.add_argument("--output-dir", default="data/processed")
     args = parser.parse_args()
     build_datasets(
