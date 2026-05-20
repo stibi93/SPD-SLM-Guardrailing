@@ -8,7 +8,6 @@ class Article9Category(str, Enum):
     RELIGION_BELIEF = "religion_belief"
     TRADE_UNION = "trade_union"
     GENETIC = "genetic"
-    BIOMETRIC = "biometric"
     HEALTH = "health"
     SEX_LIFE_ORIENTATION = "sex_life_orientation"
 

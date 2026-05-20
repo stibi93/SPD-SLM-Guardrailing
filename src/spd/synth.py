@@ -48,10 +48,6 @@ _PROMPTS: dict[str, str] = {
         "Generálj {n} rövid magyar bankos chat üzenetet, amelyek genetikai adatot tartalmaznak "
         "(pl. örökletes betegség, DNS-teszt). JSON tömb."
     ),
-    "biometric": (
-        "Generálj {n} rövid magyar bankos chat üzenetet, amelyek biometrikus azonosítást "
-        "tartalmaznak (pl. ujjlenyomat, arcfelismerés bankba belépéshez). JSON tömb."
-    ),
     "health": (
         "Generálj {n} rövid magyar bankos chat üzenetet, amelyek egészségügyi adatot "
         "tartalmaznak (betegség, fogyatékosság, gyógyszer, kezelés). JSON tömb."

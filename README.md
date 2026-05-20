@@ -6,7 +6,7 @@ A lightweight, on-premises multi-label classifier that detects **GDPR Article 9 
 
 ## What it detects
 
-Eight Article 9 categories, returned as per-category confidence scores:
+Seven Article 9 categories (excluding biometric), returned as per-category confidence scores:
 
 | Category | Description |
 |---|---|
@@ -15,7 +15,6 @@ Eight Article 9 categories, returned as per-category confidence scores:
 | `religion_belief` | Religious or philosophical beliefs |
 | `trade_union` | Trade union membership |
 | `genetic` | Genetic data |
-| `biometric` | Biometric data (used for identification) |
 | `health` | Health data |
 | `sex_life_orientation` | Sex life or sexual orientation |
 
@@ -33,7 +32,7 @@ Chat backend  →  SPD Detector (FastAPI)  →  Guardrailing layer
                   (ONNX INT8, CPU)
 ```
 
-- **Model:** `SZTAKI-HLT/hubert-base-cc` (110M params, Hungarian BERT) with a linear classification head over `[CLS]` → 8 sigmoid outputs
+- **Model:** `SZTAKI-HLT/hubert-base-cc` (110M params, Hungarian BERT) with a linear classification head over `[CLS]` → 7 sigmoid outputs
 - **Runtime:** ONNX Runtime CPU, INT8 dynamic quantization (~111 MB artifact)
 - **Latency:** p95 ≈ 48 ms on a developer laptop (target: ≤ 200 ms)
 - **Deployment:** CPU-only, stateless, OpenShift-ready
@@ -102,7 +101,7 @@ Label data in JSONL format (one record per line):
   "lang": "hu",
   "labels": {
     "ethnicity": 0, "political_opinion": 0, "religion_belief": 0,
-    "trade_union": 0, "genetic": 0, "biometric": 0,
+    "trade_union": 0, "genetic": 0,
     "health": 1, "sex_life_orientation": 0
   },
   "source": "organic",
@@ -171,7 +170,7 @@ Response:
   "lang_detected": "hu",
   "scores": {
     "ethnicity": 0.02, "political_opinion": 0.01, "religion_belief": 0.03,
-    "trade_union": 0.00, "genetic": 0.00, "biometric": 0.00,
+    "trade_union": 0.00, "genetic": 0.00,
     "health": 0.94, "sex_life_orientation": 0.01
   },
   "categories_triggered": ["health"],
@@ -206,7 +205,6 @@ per_category:
   religion_belief: 0.5
   trade_union: 0.5
   genetic: 0.5
-  biometric: 0.5
   health: 0.5
   sex_life_orientation: 0.5
 decision_logic: any_over_threshold
