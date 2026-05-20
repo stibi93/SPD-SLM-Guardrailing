@@ -1,6 +1,8 @@
 model_name_or_path: SZTAKI-HLT/hubert-base-cc
 train_data: data/processed/train.jsonl
+test_data: data/processed/test.jsonl
 output_dir: artifacts/checkpoints
+report_dir: artifacts/reports
 seed: 42
 learning_rate: 2.0e-5
 weight_decay: 0.01

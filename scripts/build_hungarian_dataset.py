@@ -23,6 +23,8 @@ from long_form_examples import (  # noqa: E402
 
 from spd.categories import CATEGORIES
 
+from spd.dedup import find_overlap, find_template_overlap, split_disjoint, text_key, validate_disjoint
+
 # Banking context prefixes/suffixes for diversity
 _PREFIXES = [
     "Üdv!",
@@ -1102,8 +1104,9 @@ def _record(
     labels: str | list[str] | None,
     annotator: str,
     notes: str = "",
+    template_key: str | None = None,
 ) -> dict:
-    return {
+    rec = {
         "id": str(uuid.uuid4()),
         "text": _clamp_text(text),
         "lang": "hu",
@@ -1112,91 +1115,138 @@ def _record(
         "annotator": annotator,
         "notes": notes,
     }
+    if template_key:
+        rec["template_key"] = template_key
+    return rec
+
+
+def _unique_templates(texts: list[str]) -> list[str]:
+    """Keep first occurrence of each normalized template sentence."""
+    seen: set[str] = set()
+    unique: list[str] = []
+    for text in texts:
+        key = text_key(text)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(text)
+    return unique
+
+
+def _unique_multi(
+    items: list[tuple[str, list[str]]],
+) -> list[tuple[str, list[str]]]:
+    seen: set[str] = set()
+    unique: list[tuple[str, list[str]]] = []
+    for text, cats in items:
+        key = text_key(text)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((text, cats))
+    return unique
+
+
+def _partition(items: list, n_first: int, n_second: int, rng: random.Random) -> tuple[list, list]:
+    """Disjoint partition of shuffled items into two lists of requested sizes."""
+    pool = items.copy()
+    rng.shuffle(pool)
+    needed = n_first + n_second
+    if len(pool) < needed:
+        raise ValueError(
+            f"Need {needed} unique templates, only {len(pool)} available"
+        )
+    return pool[:n_first], pool[n_first:needed]
+
+
+def _wrapper_phrases() -> tuple[str, ...]:
+    return tuple(
+        _PREFIXES + _SUFFIXES + _LONG_INTROS + _LONG_MIDDLES + _LONG_CLOSINGS
+    )
 
 
 def _build_split(
-    per_category: int,
-    negative_count: int,
-    multi_label_count: int,
-    long_single_per_category: int,
-    long_multi_count: int,
-    long_negative_count: int,
+    category_templates: dict[str, list[str]],
+    negative_templates: list[str],
+    multi_label_templates: list[tuple[str, list[str]]],
+    long_single_templates: dict[str, list[str]],
+    long_multi_templates: list[tuple[str, list[str]]],
+    long_negative_templates: list[str],
     seed: int,
     diversify: bool,
-    multi_label_pool: list[tuple[str, list[str]]] | None = None,
-    long_multi_pool: list[tuple[str, list[str]]] | None = None,
+    per_category: int,
+    long_single_per_category: int,
 ) -> list[dict]:
     rng = random.Random(seed)
     records: list[dict] = []
 
     for category in CATEGORIES:
-        base_texts = _CATEGORY_TEXTS[category]
-        if len(base_texts) < per_category:
+        templates = category_templates[category]
+        if len(templates) < per_category:
             raise ValueError(
-                f"Category {category} has only {len(base_texts)} templates, "
+                f"Category {category} has only {len(templates)} train/test templates, "
                 f"need {per_category}"
             )
-        chosen = rng.sample(base_texts, per_category)
-        for text in chosen:
+        for text in templates[:per_category]:
             records.append(
                 _record(
                     _diversify(text, rng, diversify),
                     category,
                     "seed-corpus-v1",
+                    template_key=text_key(text),
                 )
             )
 
         if long_single_per_category > 0:
-            curated = LONG_SINGLE.get(category, [])
-            long_texts: list[str] = list(curated)
+            curated = list(long_single_templates.get(category, []))
+            base_pool = templates[:per_category]
+            long_texts: list[tuple[str, str]] = [
+                (t, text_key(t)) for t in curated
+            ]
             while len(long_texts) < long_single_per_category:
-                long_texts.append(_pad_to_long(rng.choice(base_texts), rng))
-            for text in long_texts[:long_single_per_category]:
+                core = rng.choice(base_pool)
+                long_texts.append((_pad_to_long(core, rng), text_key(core)))
+            for text, tkey in long_texts[:long_single_per_category]:
                 records.append(
-                    _record(text, category, "seed-corpus-v3-long", "long-single")
+                    _record(
+                        text, category, "seed-corpus-v3-long", "long-single", template_key=tkey
+                    )
                 )
 
-    pool = multi_label_pool if multi_label_pool is not None else _MULTI_LABEL_EXAMPLES
-    if multi_label_count > 0:
-        if len(pool) < multi_label_count:
-            raise ValueError(
-                f"Only {len(pool)} multi-label templates, need {multi_label_count}"
-            )
-        for text, cats in rng.sample(pool, multi_label_count):
-            records.append(
-                _record(
-                    _diversify(text, rng, diversify),
-                    cats,
-                    "seed-corpus-v2-multilabel",
-                    "multi-label",
-                )
-            )
-
-    long_multi_src = long_multi_pool if long_multi_pool is not None else LONG_MULTI
-    if long_multi_count > 0:
-        long_multi_texts: list[tuple[str, list[str]]] = list(long_multi_src)
-        while len(long_multi_texts) < long_multi_count:
-            text, cats = rng.choice(pool)
-            long_multi_texts.append((_pad_to_long(text, rng, min_len=380), cats))
-        for text, cats in long_multi_texts[:long_multi_count]:
-            records.append(
-                _record(text, cats, "seed-corpus-v3-long", "long-multi")
-            )
-
-    neg_chosen = rng.sample(_NEGATIVE_TEXTS, negative_count)
-    for text in neg_chosen:
+    for text, cats in multi_label_templates:
         records.append(
-            _record(_diversify(text, rng, diversify), None, "seed-corpus-v1")
+            _record(
+                _diversify(text, rng, diversify),
+                cats,
+                "seed-corpus-v2-multilabel",
+                "multi-label",
+                template_key=text_key(text),
+            )
         )
 
-    if long_negative_count > 0:
-        long_negs: list[str] = list(LONG_NEGATIVE)
-        while len(long_negs) < long_negative_count:
-            long_negs.append(_pad_to_long(rng.choice(_NEGATIVE_TEXTS), rng))
-        for text in long_negs[:long_negative_count]:
-            records.append(
-                _record(text, None, "seed-corpus-v3-long", "long-negative")
+    for text, cats in long_multi_templates:
+        records.append(
+            _record(
+                text, cats, "seed-corpus-v3-long", "long-multi", template_key=text_key(text)
             )
+        )
+
+    for text in negative_templates:
+        records.append(
+            _record(
+                _diversify(text, rng, diversify),
+                None,
+                "seed-corpus-v1",
+                template_key=text_key(text),
+            )
+        )
+
+    for text in long_negative_templates:
+        records.append(
+            _record(
+                text, None, "seed-corpus-v3-long", "long-negative", template_key=text_key(text)
+            )
+        )
 
     rng.shuffle(records)
     return records
@@ -1230,10 +1280,10 @@ def _count_by_category(records: list[dict]) -> dict[str, int]:
 
 
 def build_datasets(
-    train_per_category: int = 60,
-    test_per_category: int = 50,
-    train_negatives: int = 62,
-    test_negatives: int = 50,
+    train_per_category: int = 22,
+    test_per_category: int = 12,
+    train_negatives: int = 40,
+    test_negatives: int = 22,
     train_multi_label: int = 65,
     test_multi_label: int = 30,
     train_long_single_per_category: int = 8,
@@ -1248,49 +1298,83 @@ def build_datasets(
     assert_max_length()
 
     out = Path(output_dir)
-    rng_split = random.Random(123)
-    multi_pool = _MULTI_LABEL_EXAMPLES.copy()
-    rng_split.shuffle(multi_pool)
-    needed = train_multi_label + test_multi_label
-    if len(multi_pool) < needed:
+    rng = random.Random(123)
+
+    train_cat: dict[str, list[str]] = {}
+    test_cat: dict[str, list[str]] = {}
+    category_texts = {c: _unique_templates(_CATEGORY_TEXTS[c]) for c in CATEGORIES}
+    min_unique = min(len(category_texts[c]) for c in CATEGORIES)
+    if train_per_category + test_per_category > min_unique:
         raise ValueError(
-            f"Only {len(multi_pool)} multi-label templates, need {needed}"
+            f"Requested {train_per_category}+{test_per_category} templates per category "
+            f"but smallest category pool has only {min_unique} unique templates"
         )
-    test_multi_pool = multi_pool[:test_multi_label]
-    train_multi_pool = multi_pool[test_multi_label:needed]
+    for category in CATEGORIES:
+        tr, te = _partition(
+            category_texts[category], train_per_category, test_per_category, rng
+        )
+        train_cat[category] = tr
+        test_cat[category] = te
+
+    train_neg, test_neg = _partition(_NEGATIVE_TEXTS, train_negatives, test_negatives, rng)
+    train_multi, test_multi = _partition(
+        _unique_multi(_MULTI_LABEL_EXAMPLES), train_multi_label, test_multi_label, rng
+    )
+
+    train_long_single: dict[str, list[str]] = {}
+    test_long_single: dict[str, list[str]] = {}
+    for category in CATEGORIES:
+        curated = LONG_SINGLE.get(category, [])
+        n_tr = min(len(curated), train_long_single_per_category)
+        tr_cur, te_cur = _partition(
+            curated,
+            n_tr,
+            min(len(curated) - n_tr, test_long_single_per_category),
+            rng,
+        ) if curated else ([], [])
+        train_long_single[category] = tr_cur
+        test_long_single[category] = te_cur
 
     long_multi_all = LONG_MULTI.copy()
-    rng_split.shuffle(long_multi_all)
+    rng.shuffle(long_multi_all)
     long_multi_needed = train_long_multi + test_long_multi
     while len(long_multi_all) < long_multi_needed:
-        text, cats = rng_split.choice(multi_pool)
-        long_multi_all.append((_pad_to_long(text, rng_split, min_len=380), cats))
-    test_long_multi_pool = long_multi_all[:test_long_multi]
-    train_long_multi_pool = long_multi_all[test_long_multi:long_multi_needed]
+        text, cats = rng.choice(train_multi)
+        long_multi_all.append((_pad_to_long(text, rng, min_len=380), cats))
+    train_long_multi_list = long_multi_all[:train_long_multi]
+    test_long_multi_list = long_multi_all[train_long_multi:long_multi_needed]
+
+    long_neg_all = LONG_NEGATIVE.copy()
+    rng.shuffle(long_neg_all)
+    long_neg_needed = train_long_negative + test_long_negative
+    while len(long_neg_all) < long_neg_needed:
+        long_neg_all.append(_pad_to_long(rng.choice(train_neg), rng))
+    train_long_neg_list = long_neg_all[:train_long_negative]
+    test_long_neg_list = long_neg_all[train_long_negative:long_neg_needed]
 
     train_records = _build_split(
-        per_category=train_per_category,
-        negative_count=train_negatives,
-        multi_label_count=train_multi_label,
-        long_single_per_category=train_long_single_per_category,
-        long_multi_count=train_long_multi,
-        long_negative_count=train_long_negative,
+        category_templates=train_cat,
+        negative_templates=train_neg,
+        multi_label_templates=train_multi,
+        long_single_templates=train_long_single,
+        long_multi_templates=train_long_multi_list,
+        long_negative_templates=train_long_neg_list,
         seed=42,
         diversify=True,
-        multi_label_pool=train_multi_pool,
-        long_multi_pool=train_long_multi_pool,
+        per_category=train_per_category,
+        long_single_per_category=train_long_single_per_category,
     )
     test_records = _build_split(
-        per_category=test_per_category,
-        negative_count=test_negatives,
-        multi_label_count=test_multi_label,
-        long_single_per_category=test_long_single_per_category,
-        long_multi_count=test_long_multi,
-        long_negative_count=test_long_negative,
+        category_templates=test_cat,
+        negative_templates=test_neg,
+        multi_label_templates=test_multi,
+        long_single_templates=test_long_single,
+        long_multi_templates=test_long_multi_list,
+        long_negative_templates=test_long_neg_list,
         seed=99,
         diversify=False,
-        multi_label_pool=test_multi_pool,
-        long_multi_pool=test_long_multi_pool,
+        per_category=test_per_category,
+        long_single_per_category=test_long_single_per_category,
     )
 
     for split_name, recs in [("train", train_records), ("test", test_records)]:
@@ -1298,13 +1382,40 @@ def build_datasets(
         if too_long:
             raise ValueError(f"{split_name} has {len(too_long)} examples over {MAX_TEXT_LENGTH} chars")
 
+    train_records, test_records, dedup_stats = split_disjoint(
+        train_records, test_records, prefer="test"
+    )
+
+    template_overlap = find_template_overlap(train_records, test_records)
+    dedup_stats["template_overlap_remaining"] = len(template_overlap)
+
+    if find_overlap(train_records, test_records):
+        raise RuntimeError("Exact train/test overlap remains after deduplication")
+    if template_overlap:
+        raise RuntimeError(
+            f"Template-level train/test overlap remains ({len(template_overlap)})."
+        )
+
     train_path = out / "train.jsonl"
     test_path = out / "test.jsonl"
+    dedup_path = out / "dedup_stats.json"
     _write_jsonl(train_path, train_records)
     _write_jsonl(test_path, test_records)
+    dedup_path.write_text(
+        json.dumps(dedup_stats, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    validate_disjoint(train_path, test_path)
+    test_path = out / "test.jsonl"
+    dedup_path = out / "dedup_stats.json"
+    _write_jsonl(train_path, train_records)
+    _write_jsonl(test_path, test_records)
+    dedup_path.write_text(
+        json.dumps(dedup_stats, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
 
     print(f"Wrote {len(train_records)} records to {train_path}")
     print(f"Wrote {len(test_records)} records to {test_path}")
+    print(f"Dedup stats: {dedup_stats}")
     print("\nTrain split counts:")
     for key, count in sorted(_count_by_category(train_records).items()):
         print(f"  {key}: {count}")
@@ -1315,10 +1426,10 @@ def build_datasets(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build Hungarian SPD datasets")
-    parser.add_argument("--train-per-category", type=int, default=60)
-    parser.add_argument("--test-per-category", type=int, default=50)
-    parser.add_argument("--train-negatives", type=int, default=62)
-    parser.add_argument("--test-negatives", type=int, default=50)
+    parser.add_argument("--train-per-category", type=int, default=22)
+    parser.add_argument("--test-per-category", type=int, default=12)
+    parser.add_argument("--train-negatives", type=int, default=40)
+    parser.add_argument("--test-negatives", type=int, default=22)
     parser.add_argument("--train-multi-label", type=int, default=65)
     parser.add_argument("--test-multi-label", type=int, default=30)
     parser.add_argument("--train-long-single-per-category", type=int, default=8)

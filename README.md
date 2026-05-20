@@ -246,7 +246,29 @@ The SPD service **never logs or persists raw user text**. Each request log entry
 uv run pytest --tb=short -q
 ```
 
-32 tests covering categories, data loading, model forward pass, evaluation metrics, ONNX inference, and the FastAPI service endpoints.
+36 tests covering categories, deduplication, data loading, model forward pass, evaluation metrics, ONNX inference, and the FastAPI service endpoints.
+
+---
+
+## Evaluation reports
+
+After training, reports are saved to `artifacts/reports/<timestamp>/` (symlink: `artifacts/reports/latest/`):
+
+- **training_curves.png** — TensorBoard-style loss & macro-F1 over epochs
+- **per_category_f1_curves.png** — per-category validation F1 over epochs
+- **test_category_good_bad.png** — stacked **jó / rossz** bars per category (test set)
+- **test_sample_accuracy.png** — exact multi-label match & average category accuracy
+- **metrics.json**, **training_history.json**, **README.md**
+
+Regenerate a test report from a checkpoint:
+
+```bash
+uv run python -m spd.eval_report \
+  --model-path artifacts/checkpoints/best_model.pt \
+  --history artifacts/reports/latest/training_history.json
+```
+
+Train and test JSONL are deduplicated with **zero text overlap** when built via `scripts/build_hungarian_dataset.py` (see `data/processed/dedup_stats.json`).
 
 ---
 
