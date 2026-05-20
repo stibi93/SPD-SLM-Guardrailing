@@ -26,6 +26,17 @@ from banking_chat_scenarios import (  # noqa: E402
     BANKING_NEGATIVE_TEXTS,
     BANKING_SPD_EXTRA,
 )
+from diverse_scenarios import (  # noqa: E402
+    CONTEXTUAL_SPD,
+    DIVERSE_NEGATIVES,
+    FORMAL_SPD,
+    FRUSTRATED_SPD,
+    IMPLICIT_SPD,
+    NEGATION_SPD,
+    QUESTION_SPD,
+    THIRD_PERSON_SPD,
+    TRICKY_NEGATIVES,
+)
 
 from spd.categories import CATEGORIES
 
@@ -154,16 +165,28 @@ _ALL_LONG_NEGATIVE_SOURCE = list(LONG_NEGATIVE) + list(BANKING_NEGATIVE_LONG)
 
 
 def _merged_category_texts() -> dict[str, list[str]]:
-    """Category templates + realistic banking-chat SPD examples, deduplicated."""
+    """Merge all template sources per category, deduplicate."""
     merged: dict[str, list[str]] = {}
     for category in CATEGORIES:
-        extra = BANKING_SPD_EXTRA.get(category, [])
-        merged[category] = _unique_templates(_CATEGORY_TEXTS[category] + extra)
+        combined = (
+            _CATEGORY_TEXTS[category]
+            + BANKING_SPD_EXTRA.get(category, [])
+            + NEGATION_SPD.get(category, [])
+            + THIRD_PERSON_SPD.get(category, [])
+            + IMPLICIT_SPD.get(category, [])
+            + FRUSTRATED_SPD.get(category, [])
+            + FORMAL_SPD.get(category, [])
+            + QUESTION_SPD.get(category, [])
+            + CONTEXTUAL_SPD.get(category, [])
+        )
+        merged[category] = _unique_templates(combined)
     return merged
 
 
 def _all_negative_templates() -> list[str]:
-    return _unique_templates(_ALL_NEGATIVE_SOURCE)
+    return _unique_templates(
+        _ALL_NEGATIVE_SOURCE + list(DIVERSE_NEGATIVES) + list(TRICKY_NEGATIVES)
+    )
 
 
 def _all_multi_templates() -> list[tuple[str, list[str]]]:
@@ -1308,10 +1331,10 @@ def _count_by_category(records: list[dict]) -> dict[str, int]:
 
 
 def build_datasets(
-    train_per_category: int = 22,
-    test_per_category: int = 12,
-    train_negatives: int = 85,
-    test_negatives: int = 45,
+    train_per_category: int = 30,
+    test_per_category: int = 15,
+    train_negatives: int = 120,
+    test_negatives: int = 60,
     train_multi_label: int = 65,
     test_multi_label: int = 30,
     train_long_single_per_category: int = 8,
@@ -1462,10 +1485,10 @@ def build_datasets(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build Hungarian SPD datasets")
-    parser.add_argument("--train-per-category", type=int, default=22)
-    parser.add_argument("--test-per-category", type=int, default=12)
-    parser.add_argument("--train-negatives", type=int, default=85)
-    parser.add_argument("--test-negatives", type=int, default=45)
+    parser.add_argument("--train-per-category", type=int, default=30)
+    parser.add_argument("--test-per-category", type=int, default=15)
+    parser.add_argument("--train-negatives", type=int, default=120)
+    parser.add_argument("--test-negatives", type=int, default=60)
     parser.add_argument("--train-multi-label", type=int, default=65)
     parser.add_argument("--test-multi-label", type=int, default=30)
     parser.add_argument("--train-long-single-per-category", type=int, default=8)
