@@ -22,6 +22,14 @@ A single message may trigger zero, one, or several categories simultaneously.
 
 ---
 
+## Demo
+
+FastAPI exposes a built-in Swagger UI at `http://localhost:8080/docs`. Click **Try it out** on `POST /v1/spd-check`, paste any Hungarian text, and execute to see the live scores.
+
+<video src="docs/demo_compressed.mp4" autoplay loop muted playsinline width="900"></video>
+
+---
+
 ## Architecture
 
 ```
@@ -51,6 +59,12 @@ slm-spd-guardrailing/
 │   ├── raw/                    # organic samples (gitignored)
 │   ├── synthetic/              # Azure OpenAI generated samples (gitignored)
 │   └── processed/              # train/dev/test JSONL + HTML/CSV inspection exports (gitignored)
+├── docs/
+│   ├── demo_compressed.mp4     # Swagger UI demo recording
+│   ├── training_curves.png     # loss + macro-F1 over epochs
+│   ├── per_category_f1_curves.png
+│   ├── test_category_good_bad.png
+│   └── test_sample_accuracy.png
 ├── src/spd/
 │   ├── categories.py           # Article 9 enum + CATEGORIES list
 │   ├── model.py                # SPDClassifier (huBERT encoder + linear head)
@@ -71,10 +85,7 @@ slm-spd-guardrailing/
 │   ├── export_dataset_html.py        # export data to HTML/CSV for inspection
 │   ├── download_model.py             # cache huBERT locally before training
 │   └── benchmark_latency.py         # measure p50/p95/p99 latency
-├── tests/
-└── docs/superpowers/
-    ├── specs/                  # design specification
-    └── plans/                  # implementation plan
+└── tests/
 ```
 
 ---
@@ -199,12 +210,6 @@ Response:
 | `GET /metrics` | Prometheus metrics |
 | `GET /v1/info` | Model version, thresholds, build info |
 
-### Interactive Swagger UI
-
-FastAPI exposes a built-in Swagger UI at `http://localhost:8080/docs` — no extra setup needed. Open it in your browser, click **Try it out** on `POST /v1/spd-check`, paste any Hungarian text, and execute to see the live scores.
-
-https://github.com/tiborseres/slm-spd-guardrailing/raw/main/docs/demo_compressed.mp4
-
 ---
 
 ## Configuration
@@ -301,7 +306,7 @@ uv run python -m spd.eval_report \
 
 ### Training curves
 
-![Training curves](artifacts/reports/latest/training_curves.png)
+![Training curves](docs/training_curves.png)
 
 **Left panel — Loss.** The orange line (train loss) starts at ~1.0 and falls sharply after each epoch, reaching ~0.07 by epoch 5. The blue line (dev loss) mirrors it, dropping even faster to ~0.07 — the two lines converge closely, which indicates **no overfitting**: the model generalises well rather than just memorising training examples. If dev loss had risen while train loss kept falling, that would signal overfitting.
 
@@ -311,7 +316,7 @@ uv run python -m spd.eval_report \
 
 ### Per-category validation F1 over epochs
 
-![Per-category F1 curves](artifacts/reports/latest/per_category_f1_curves.png)
+![Per-category F1 curves](docs/per_category_f1_curves.png)
 
 Each coloured line tracks one category's F1 score on the validation set across the 5 epochs. Key observations:
 
@@ -323,7 +328,7 @@ Each coloured line tracks one category's F1 score on the validation set across t
 
 ### Test set: correct vs. incorrect predictions per category
 
-![Category good/bad bars](artifacts/reports/latest/test_category_good_bad.png)
+![Category good/bad bars](docs/test_category_good_bad.png)
 
 Each bar represents **all 247 test samples** evaluated for that category. Green (jó = good) is the proportion of samples where the prediction was correct; red (rossz = bad) is where it was wrong.
 
@@ -335,7 +340,7 @@ Each bar represents **all 247 test samples** evaluated for that category. Green 
 
 ### Sample-level accuracy
 
-![Sample accuracy](artifacts/reports/latest/test_sample_accuracy.png)
+![Sample accuracy](docs/test_sample_accuracy.png)
 
 Two complementary metrics measured on the 247 test samples:
 
@@ -382,7 +387,7 @@ The SPD service **never logs or persists raw user text**. Each request log entry
 uv run pytest --tb=short -q
 ```
 
-36 tests covering categories, deduplication, data loading, model forward pass, evaluation metrics, ONNX inference, and the FastAPI service endpoints.
+37 tests covering categories, deduplication, data loading, model forward pass, evaluation metrics, ONNX inference, and the FastAPI service endpoints.
 
 ---
 
