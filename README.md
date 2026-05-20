@@ -199,6 +199,12 @@ Response:
 | `GET /metrics` | Prometheus metrics |
 | `GET /v1/info` | Model version, thresholds, build info |
 
+### Interactive Swagger UI
+
+FastAPI exposes a built-in Swagger UI at `http://localhost:8080/docs` — no extra setup needed. Open it in your browser, click **Try it out** on `POST /v1/spd-check`, paste any Hungarian text, and execute to see the live scores.
+
+https://github.com/tiborseres/slm-spd-guardrailing/raw/main/docs/demo_compressed.mp4
+
 ---
 
 ## Configuration
