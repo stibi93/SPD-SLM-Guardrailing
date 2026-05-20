@@ -26,7 +26,7 @@ A single message may trigger zero, one, or several categories simultaneously.
 
 FastAPI exposes a built-in Swagger UI at `http://localhost:8080/docs`. Click **Try it out** on `POST /v1/spd-check`, paste any Hungarian text, and execute to see the live scores.
 
-<video src="docs/demo_compressed.mp4" autoplay loop muted playsinline width="900"></video>
+![Swagger UI demo](docs/demo.gif)
 
 ---
 
@@ -60,7 +60,7 @@ slm-spd-guardrailing/
 │   ├── synthetic/              # Azure OpenAI generated samples (gitignored)
 │   └── processed/              # train/dev/test JSONL + HTML/CSV inspection exports (gitignored)
 ├── docs/
-│   ├── demo_compressed.mp4     # Swagger UI demo recording
+│   ├── demo.gif                # Swagger UI demo recording
 │   ├── training_curves.png     # loss + macro-F1 over epochs
 │   ├── per_category_f1_curves.png
 │   ├── test_category_good_bad.png
