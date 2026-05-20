@@ -62,6 +62,10 @@ _PROMPTS: dict[str, str] = {
     ),
 }
 
+assert set(_PROMPTS) == {c.value for c in Article9Category}, (
+    f"_PROMPTS keys out of sync with Article9Category"
+)
+
 
 def _make_negative_prompt(n: int) -> str:
     return (
@@ -83,7 +87,8 @@ def generate(category: str, count: int, out_path: str) -> None:
         )
         sys.exit(1)
 
-    client = AzureOpenAI(azure_endpoint=endpoint, api_key=api_key, api_version="2024-02-01")
+    api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-01")
+    client = AzureOpenAI(azure_endpoint=endpoint, api_key=api_key, api_version=api_version)
 
     is_negative = category == "negative"
     prompt = _make_negative_prompt(count) if is_negative else _PROMPTS[category].format(n=count)
@@ -95,11 +100,26 @@ def generate(category: str, count: int, out_path: str) -> None:
             {"role": "user", "content": prompt},
         ],
         temperature=0.9,
-        response_format={"type": "json_object"},
+        response_format={"type": "text"},
     )
 
-    raw = response.choices[0].message.content
-    texts: list[str] = json.loads(raw) if isinstance(json.loads(raw), list) else list(json.loads(raw).values())[0]
+    raw = response.choices[0].message.content or ""
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        print(f"ERROR: model returned non-JSON: {exc}\nRaw: {raw[:200]}", file=sys.stderr)
+        sys.exit(1)
+    if isinstance(parsed, list):
+        texts = parsed
+    elif isinstance(parsed, dict) and parsed:
+        candidate = next(iter(parsed.values()))
+        if not isinstance(candidate, list):
+            print(f"ERROR: unexpected JSON shape: {raw[:200]}", file=sys.stderr)
+            sys.exit(1)
+        texts = candidate
+    else:
+        print(f"ERROR: unexpected JSON shape: {raw[:200]}", file=sys.stderr)
+        sys.exit(1)
 
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     written = 0
@@ -123,6 +143,9 @@ def generate(category: str, count: int, out_path: str) -> None:
             written += 1
 
     print(f"Wrote {written} examples to {out_path}")
+    if written < count:
+        print(f"WARNING: requested {count} but only wrote {written} examples.", file=sys.stderr)
+        sys.exit(1)
 
 
 def main() -> None:
