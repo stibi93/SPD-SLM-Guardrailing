@@ -75,17 +75,20 @@ slm-spd-guardrailing/
 
 ## Quick start
 
+Requires [uv](https://docs.astral.sh/uv/) for dependency management and running commands.
+
 ### 1. Install
 
 ```bash
-python3 -m venv venv && source venv/bin/activate
-pip install -e ".[dev]"
+uv sync --dev
 ```
+
+This creates `.venv/` and installs all runtime and development dependencies from `uv.lock`.
 
 ### 2. Download the base model
 
 ```bash
-python scripts/download_model.py
+uv run python scripts/download_model.py
 ```
 
 ### 3. Prepare training data
@@ -115,15 +118,15 @@ Optionally generate synthetic Hungarian examples via Azure OpenAI:
 ```bash
 export AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/
 export AZURE_OPENAI_API_KEY=<key>
-python -m spd.synth --category health --count 100 --out data/synthetic/health.jsonl
+uv run python -m spd.synth --category health --count 100 --out data/synthetic/health.jsonl
 ```
 
 ### 4. Train
 
 ```bash
-python -m spd.train
+uv run python -m spd.train
 # or with a custom config:
-python -m spd.train configs/train_config.yaml
+uv run python -m spd.train configs/train_config.yaml
 ```
 
 Saves best checkpoint to `artifacts/checkpoints/best_model.pt` based on dev macro-F1 with early stopping (patience 1).
@@ -131,20 +134,20 @@ Saves best checkpoint to `artifacts/checkpoints/best_model.pt` based on dev macr
 ### 5. Export to ONNX
 
 ```bash
-python -m spd.export_onnx artifacts/checkpoints/best_model.pt artifacts/
+uv run python -m spd.export_onnx artifacts/checkpoints/best_model.pt artifacts/
 # → artifacts/model.onnx  (INT8, ~111 MB)
 ```
 
 ### 6. Benchmark latency
 
 ```bash
-python scripts/benchmark_latency.py --model-path artifacts/model.onnx --reps 200
+uv run python scripts/benchmark_latency.py --model-path artifacts/model.onnx --reps 200
 ```
 
 ### 7. Run the service
 
 ```bash
-uvicorn spd.service:app --host 0.0.0.0 --port 8080
+uv run uvicorn spd.service:app --host 0.0.0.0 --port 8080
 ```
 
 ---
@@ -242,7 +245,7 @@ The SPD service **never logs or persists raw user text**. Each request log entry
 ## Running tests
 
 ```bash
-pytest --tb=short -q
+uv run pytest --tb=short -q
 ```
 
 32 tests covering categories, data loading, model forward pass, evaluation metrics, ONNX inference, and the FastAPI service endpoints.
