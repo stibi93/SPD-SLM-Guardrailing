@@ -3,10 +3,13 @@
 """Measure SPDPredictor p50/p95/p99 latency on representative Hungarian texts."""
 import argparse
 import statistics
+import sys
 import time
 
 from spd.categories import CATEGORIES
 from spd.inference import SPDPredictor
+
+P95_TARGET_MS = 200.0
 
 SAMPLE_TEXTS = [
     "Cukorbeteg vagyok és szeretnék hitelt felvenni.",
@@ -30,6 +33,9 @@ def main() -> None:
     parser.add_argument("--reps", type=int, default=200)
     args = parser.parse_args()
 
+    if args.reps < 100:
+        parser.error("--reps must be at least 100 for meaningful percentiles")
+
     thresholds = {cat: 0.5 for cat in CATEGORIES}
     predictor = SPDPredictor(args.model_path, args.tokenizer, thresholds)
 
@@ -46,17 +52,20 @@ def main() -> None:
 
     latencies.sort()
     p50 = statistics.median(latencies)
-    p95 = latencies[int(len(latencies) * 0.95)]
-    p99 = latencies[int(len(latencies) * 0.99)]
+    qs = statistics.quantiles(latencies, n=100)
+    p95 = qs[94]  # 95th percentile (0-indexed: index 94)
+    p99 = qs[98]  # 99th percentile
     mean = statistics.mean(latencies)
 
     print(f"\nLatency over {args.reps} requests:")
     print(f"  mean = {mean:.1f} ms")
     print(f"  p50  = {p50:.1f} ms")
-    print(f"  p95  = {p95:.1f} ms   ← target: ≤200 ms")
+    print(f"  p95  = {p95:.1f} ms   ← target: ≤{P95_TARGET_MS:.0f} ms")
     print(f"  p99  = {p99:.1f} ms")
-    gate = "PASS" if p95 <= 200.0 else "FAIL"
-    print(f"\nLatency gate (p95 ≤ 200 ms): {gate}")
+    gate = "PASS" if p95 <= P95_TARGET_MS else "FAIL"
+    print(f"\nLatency gate (p95 ≤ {P95_TARGET_MS:.0f} ms): {gate}")
+    if gate == "FAIL":
+        sys.exit(1)
 
 
 if __name__ == "__main__":
